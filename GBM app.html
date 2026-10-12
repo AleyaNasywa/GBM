@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Monte Carlo GBM Stock Simulation</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neutralBg: '#F8FAFC',
+                        navyBrand: '#0F172A',
+                        cyanAccent: '#0284C7',
+                        cyanHover: '#0369A1',
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            background-color: #F8FAFC;
+            color: #0F172A;
+            -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Canvas dimensions */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 320px;
+        }
+        @media (min-width: 768px) {
+            .canvas-container {
+                height: 440px;
+            }
+        }
+
+        /* Clean scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F1F5F9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Phone frame preview mode (only active when desktop preview toggle is clicked) */
+        .phone-frame-mode {
+            max-width: 430px !important;
+            margin: 1.5rem auto !important;
+            border: 12px solid #0F172A !important;
+            border-radius: 40px !important;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.4) !important;
+            background: #F8FAFC !important;
+            overflow: hidden !important;
+        }
+        .phone-frame-mode .sim-grid-layout {
+            grid-template-columns: 1fr !important;
+        }
+        .phone-frame-mode .welcome-grid {
+            grid-template-columns: 1fr !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-sky-100 selection:text-sky-900">
+
+    <!-- Top Action Accent Strip (10% Cyan) -->
+    <div class="h-1 bg-[#0284C7] w-full sticky top-0 z-50"></div>
+
+    <!-- Header Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-1 z-40 shadow-xs">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+            
+            <!-- Brand Logo -->
+            <div class="flex items-center space-x-2.5 cursor-pointer shrink-0" id="navLogo">
+                <div class="w-8 h-8 rounded-xl bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs shadow-xs border border-slate-800 shrink-0">
+                    <span class="text-[#0284C7]">MC</span>
+                </div>
+                <div>
+                    <h1 class="text-sm font-bold text-[#0F172A] tracking-tight leading-none">Monte Carlo GBM</h1>
+                    <p class="text-[10px] text-slate-500 mt-0.5 hidden xs:block">Geometric Brownian Motion</p>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                <nav class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold gap-0.5 shrink-0 whitespace-nowrap border border-slate-200">
+                    <button id="navBtnWelcome" class="nav-tab-btn px-2.5 py-1.5 rounded-lg bg-white text-[#0284C7] shadow-xs transition cursor-pointer">
+                        🏠 <span class="hidden sm:inline">Welcome</span>
+                    </button>
+                    <button id="navBtnFormula" class="nav-tab-btn px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-[#0F172A] transition cursor-pointer">
+                        📐 <span class="hidden sm:inline">1. </span>Formula
+                    </button>
+                    <button id="navBtnSim" class="nav-tab-btn px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-[#0F172A] transition cursor-pointer">
+                        📊 <span class="hidden sm:inline">2. </span>Simulation
+                    </button>
+                    <button id="navBtnApplications" class="nav-tab-btn px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-[#0F172A] transition cursor-pointer">
+                        💼 <span class="hidden sm:inline">3. </span>What It's Used For
+                    </button>
+                </nav>
+
+                <!-- Desktop Device Preview Toggle -->
+                <div class="hidden md:inline-flex p-1 bg-slate-100 rounded-xl text-xs font-medium border border-slate-200 shrink-0">
+                    <button id="btnDesktopView" class="px-2 py-1 rounded-lg bg-white text-[#0F172A] shadow-xs font-semibold cursor-pointer">
+                        🖥️ Desktop
+                    </button>
+                    <button id="btnMobileView" class="px-2 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer">
+                        📱 Phone Frame
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="appContainer" class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 transition-all duration-300">
+
+        <!-- ============================================== -->
+        <!-- SECTION 0: WELCOME SCREEN                      -->
+        <!-- ============================================== -->
+        <section id="sectionWelcome" class="space-y-4 sm:space-y-6">
+            
+            <!-- Hero Card -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-8 shadow-sm space-y-4">
+                <div class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-sky-50 text-[#0284C7] border border-sky-100 text-xs font-semibold">
+                    <span>✨ Interactive Financial Modeling</span>
+                </div>
+                <h2 class="text-xl sm:text-3xl font-extrabold text-[#0F172A] tracking-tight leading-snug">
+                    Say goodbye to static spreadsheets with <span class="text-[#0284C7]">Geometric Brownian Motion (GBM)</span>.
+                </h2>
+                <p class="text-slate-600 text-xs sm:text-sm leading-relaxed max-w-3xl">
+                    Static Excel models show only a single straight-line forecast. Monte Carlo simulation generates hundreds of possible market realities simultaneously, showing deterministic growth drift combined with realistic volatility shocks.
+                </p>
+                <div class="pt-2">
+                    <button id="heroLaunchBtn" class="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white font-semibold text-xs sm:text-sm shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer">
+                        <span>Launch Simulation Engine</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3 Core Navigation Cards -->
+            <div class="welcome-grid grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                
+                <!-- Card 1: Formula Explained -->
+                <div id="cardNavFormula" class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-[#0284C7] hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-3">
+                    <div class="space-y-2">
+                        <div class="w-9 h-9 rounded-xl bg-sky-50 text-[#0284C7] flex items-center justify-center text-lg">📐</div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-[#0284C7]">Part 1</span>
+                        <h3 class="text-base font-bold text-[#0F172A]">Formula Explained</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Quick breakdown of ΔS = S<sub>t</sub>(μΔt + σε√(Δt)). Short, intuitive, and easy to memorize without complex derivations.
+                        </p>
+                    </div>
+                    <span class="text-xs font-semibold text-[#0284C7] flex items-center space-x-1 pt-1">
+                        <span>Read breakdown</span>
+                        <span>&rarr;</span>
+                    </span>
+                </div>
+
+                <!-- Card 2: Interactive Simulation -->
+                <div id="cardNavSim" class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-[#0284C7] hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-3">
+                    <div class="space-y-2">
+                        <div class="w-9 h-9 rounded-xl bg-sky-50 text-[#0284C7] flex items-center justify-center text-lg">📊</div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-[#0284C7]">Part 2</span>
+                        <h3 class="text-base font-bold text-[#0F172A]">Simulation</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Adjust S<sub>0</sub>, return (μ), and volatility (σ). Watch simulated price curves update live and export CSV data.
+                        </p>
+                    </div>
+                    <span class="text-xs font-semibold text-[#0284C7] flex items-center space-x-1 pt-1">
+                        <span>Open simulator</span>
+                        <span>&rarr;</span>
+                    </span>
+                </div>
+
+                <!-- Card 3: What It's Used For -->
+                <div id="cardNavApp" class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-[#0284C7] hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-3">
+                    <div class="space-y-2">
+                        <div class="w-9 h-9 rounded-xl bg-sky-50 text-[#0284C7] flex items-center justify-center text-lg">💼</div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-[#0284C7]">Part 3</span>
+                        <h3 class="text-base font-bold text-[#0F172A]">What It's Used For</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Everyday explanations: retirement safety, bank risk reserves, fair option pricing, and corporate investment decisions.
+                        </p>
+                    </div>
+                    <span class="text-xs font-semibold text-[#0284C7] flex items-center space-x-1 pt-1">
+                        <span>See applications</span>
+                        <span>&rarr;</span>
+                    </span>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- SECTION 1: FORMULA EXPLAINED                   -->
+        <!-- ============================================== -->
+        <section id="sectionFormula" class="hidden space-y-4 sm:space-y-6">
+            
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">📐</span>
+                    <h2 class="text-base sm:text-xl font-bold text-[#0F172A]">The Excel Discretization Formula</h2>
+                </div>
+                
+                <!-- Formula Box -->
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                    <div class="text-base sm:text-2xl font-extrabold font-mono text-[#0F172A] tracking-wide">
+                        ΔS = S<sub>t</sub> &times; (μΔt + σε√(Δt))
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1.5">Next Price S<sub>t+1</sub> = S<sub>t</sub> + ΔS</p>
+                </div>
+
+                <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Every step in stock prices has two simple components: a <strong>predictable growth trend</strong> (drift) plus an <strong>unpredictable market bounce</strong> (volatility shock).
+                </p>
+            </div>
+
+            <!-- 4 Short Term Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2 py-0.5 rounded bg-sky-50 text-[#0284C7] font-mono font-bold text-xs">S<sub>t</sub></span>
+                        <h4 class="text-xs font-bold text-[#0F172A]">Current Price Scale</h4>
+                    </div>
+                    <p class="text-xs text-slate-600">Stock movements are percentage-based. A 2% gain on a $100 stock is $2; on a $1,000 stock it is $20.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2 py-0.5 rounded bg-sky-50 text-[#0284C7] font-mono font-bold text-xs">μΔt</span>
+                        <h4 class="text-xs font-bold text-[#0F172A]">Drift (Expected Growth)</h4>
+                    </div>
+                    <p class="text-xs text-slate-600">The expected annual return (μ) scaled down to the period size (Δt). The steady upward or downward pull.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2 py-0.5 rounded bg-sky-50 text-[#0284C7] font-mono font-bold text-xs">σε√(Δt)</span>
+                        <h4 class="text-xs font-bold text-[#0F172A]">Market Shock (Volatility)</h4>
+                    </div>
+                    <p class="text-xs text-slate-600">Uncertainty swing. Volatility scales with the square root of time because market risk compounds over time.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2 py-0.5 rounded bg-sky-50 text-[#0284C7] font-mono font-bold text-xs">ε ~ N(0,1)</span>
+                        <h4 class="text-xs font-bold text-[#0F172A]">Random Dice Roll</h4>
+                    </div>
+                    <p class="text-xs text-slate-600">Standard normal distribution shock. In Excel, this is generated using <code class="bg-slate-100 px-1 rounded text-[11px] font-mono">NORM.S.INV(RAND())</code>.</p>
+                </div>
+
+            </div>
+
+            <div class="pt-2">
+                <button id="btnGotoSimFromFormula" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer">
+                    Proceed to Interactive Simulation &rarr;
+                </button>
+            </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- SECTION 2: INTERACTIVE SIMULATION             -->
+        <!-- ============================================== -->
+        <section id="sectionSimulation" class="hidden space-y-4 sm:space-y-6">
+
+            <!-- Main Layout: Side-by-side on desktop, clean vertical stack on mobile -->
+            <div class="sim-grid-layout grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+
+                <!-- Left Column: Parameters Panel (Matches your reference image) -->
+                <div class="lg:col-span-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+                    
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-[#0284C7]">⚙️</span>
+                            <h2 class="text-sm sm:text-base font-bold text-[#0F172A]">Parameters</h2>
+                        </div>
+                        <button id="resetDefaultsBtn" class="text-xs text-slate-400 hover:text-[#0284C7] font-medium transition cursor-pointer">
+                            Reset
+                        </button>
+                    </div>
+
+                    <!-- Initial Price S0 -->
+                    <div class="space-y-1">
+                        <label for="inputS0" class="block text-xs font-semibold text-slate-700">Initial Stock Price (S<sub>0</sub>)</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-2.5 text-slate-400 text-sm">$</span>
+                            <input type="number" id="inputS0" value="100" min="0.01" step="any" class="w-full bg-white border border-slate-300 rounded-xl pl-7 pr-3 py-2 text-sm text-[#0F172A] font-medium focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Expected Return mu -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center">
+                            <label for="inputMu" class="block text-xs font-semibold text-slate-700">Expected Return (μ)</label>
+                            <span id="muPctBadge" class="text-[11px] font-mono text-[#0284C7] bg-sky-50 px-1.5 py-0.5 rounded font-semibold">+15.0% / yr</span>
+                        </div>
+                        <input type="number" id="inputMu" value="0.15" step="0.01" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-[#0F172A] font-medium focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] outline-none">
+                        <input type="range" id="sliderMu" min="-0.30" max="0.50" step="0.01" value="0.15" class="w-full accent-[#0284C7] h-2 bg-slate-200 rounded-lg cursor-pointer">
+                    </div>
+
+                    <!-- Volatility sigma -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center">
+                            <label for="inputSigma" class="block text-xs font-semibold text-slate-700">Volatility (σ)</label>
+                            <span id="sigmaPctBadge" class="text-[11px] font-mono text-[#0F172A] bg-slate-100 px-1.5 py-0.5 rounded font-semibold">30.0% / yr</span>
+                        </div>
+                        <input type="number" id="inputSigma" value="0.30" min="0" step="0.01" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-[#0F172A] font-medium focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] outline-none">
+                        <input type="range" id="sliderSigma" min="0" max="0.80" step="0.01" value="0.30" class="w-full accent-[#0284C7] h-2 bg-slate-200 rounded-lg cursor-pointer">
+                    </div>
+
+                    <!-- Frequency Dropdown -->
+                    <div class="space-y-1">
+                        <label for="selectFrequency" class="block text-xs font-semibold text-slate-700">Frequency</label>
+                        <select id="selectFrequency" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-[#0F172A] font-medium focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] outline-none cursor-pointer">
+                            <option value="52" selected>Weekly (52 weeks/yr)</option>
+                            <option value="252">Daily (252 days/yr)</option>
+                            <option value="12">Monthly (12 months/yr)</option>
+                            <option value="4">Quarterly (4 quarters/yr)</option>
+                            <option value="custom">Custom Frequency</option>
+                        </select>
+                    </div>
+
+                    <!-- Time Interval dt -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center">
+                            <label for="inputDt" class="block text-xs font-semibold text-slate-700">Time Interval (Δt)</label>
+                            <span id="dtAutoBadge" class="text-[10px] text-[#0284C7] bg-sky-50 px-1.5 py-0.5 rounded font-medium">1/52</span>
+                        </div>
+                        <input type="number" id="inputDt" value="0.019231" step="0.000001" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-[#0F172A] font-mono focus:ring-2 focus:ring-[#0284C7] outline-none">
+                        <p class="text-[11px] text-slate-400">Automatically calculated, or enter custom value</p>
+                    </div>
+
+                    <!-- Time Steps & Simulations -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1">
+                            <label for="inputSteps" class="block text-xs font-semibold text-slate-700">Time Steps</label>
+                            <input type="number" id="inputSteps" value="52" min="2" max="1000" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-[#0284C7] outline-none">
+                        </div>
+                        <div class="space-y-1">
+                            <label for="inputSimulations" class="block text-xs font-semibold text-slate-700">Simulations</label>
+                            <input type="number" id="inputSimulations" value="10" min="1" max="500" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-[#0284C7] outline-none">
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Total periods to simulate. (52 = 1 yr)</p>
+
+                    <!-- Run Simulation Button -->
+                    <div class="pt-2">
+                        <button id="runSimulationBtn" class="w-full py-3 px-4 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white font-semibold text-xs sm:text-sm shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span>Run Simulation</span>
+                        </button>
+                    </div>
+
+                    <!-- Export CSV Button -->
+                    <div class="pt-1">
+                        <button id="exportCsvBtn" class="w-full py-2.5 px-3 rounded-xl border border-slate-300 hover:border-slate-400 bg-white text-slate-700 text-xs font-semibold flex items-center justify-center space-x-1.5 transition cursor-pointer">
+                            <svg class="w-3.5 h-3.5 text-[#0284C7]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>Export CSV Data</span>
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- Right Column: Stats Cards (ATAS GRAPH) & Canvas -->
+                <div class="lg:col-span-8 space-y-3 sm:space-y-4">
+                    
+                    <!-- 4 STATS CARDS (DIRECTLY ATAS / ABOVE THE GRAPH) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                        <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-xs">
+                            <span class="text-[11px] font-semibold text-slate-400 block truncate">Initial Price (S<sub>0</sub>)</span>
+                            <span class="text-base sm:text-lg font-bold text-[#0F172A] font-mono mt-0.5 block truncate" id="statS0">$100.00</span>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-xs">
+                            <span class="text-[11px] font-semibold text-slate-400 block truncate">Simulated Final Mean</span>
+                            <span class="text-base sm:text-lg font-bold text-emerald-600 font-mono mt-0.5 block truncate" id="statMean">$116.20</span>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-xs">
+                            <span class="text-[11px] font-semibold text-slate-400 block truncate">Win Rate: P(S<sub>T</sub> &gt; S<sub>0</sub>)</span>
+                            <span class="text-base sm:text-lg font-bold text-[#0284C7] font-mono mt-0.5 block truncate" id="statWinRate">60.0%</span>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-xs">
+                            <span class="text-[11px] font-semibold text-slate-400 block truncate">Theoretical Target E[S<sub>T</sub>]</span>
+                            <span class="text-base sm:text-lg font-bold text-[#0F172A] font-mono mt-0.5 block truncate" id="statTheoMean">$116.18</span>
+                        </div>
+                    </div>
+
+                    <!-- Main Chart Canvas Container -->
+                    <div class="bg-white border border-slate-200 rounded-2xl p-3 sm:p-5 shadow-sm space-y-3">
+                        
+                        <!-- Header with tab toggle & paths pill badge -->
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center space-x-2">
+                                <h2 class="text-base sm:text-lg font-bold text-[#0F172A]">Simulated Price Paths</h2>
+                                <span id="badgePathsCount" class="text-xs font-semibold px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
+                                    10 Paths Generated
+                                </span>
+                            </div>
+
+                            <div class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-medium border border-slate-200">
+                                <button id="tabTrajectories" class="px-2.5 py-1 rounded-lg bg-white text-[#0284C7] font-semibold shadow-xs cursor-pointer">
+                                    Trajectories
+                                </button>
+                                <button id="tabHistogram" class="px-2.5 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer">
+                                    Terminal Distribution
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Canvas Workspace -->
+                        <div class="canvas-container bg-white border border-slate-100 rounded-xl overflow-hidden relative" id="chartWrapper">
+                            <canvas id="mcCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+                            <!-- Hover Tooltip -->
+                            <div id="chartTooltip" class="absolute hidden pointer-events-none bg-[#0F172A]/95 text-white p-2.5 rounded-xl shadow-xl text-[11px] font-mono z-30 backdrop-blur-sm border border-slate-800"></div>
+                        </div>
+
+                        <!-- Chart Controls & Legend -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-1">
+                            <div class="flex items-center space-x-3">
+                                <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                                    <input type="checkbox" id="chkShowMean" class="rounded text-[#0284C7]">
+                                    <span class="text-[#0F172A] font-medium text-xs">Simulated Mean</span>
+                                </label>
+                                <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                                    <input type="checkbox" id="chkShowExpected" class="rounded text-[#0284C7]">
+                                    <span class="text-[#0F172A] font-medium text-xs">Theoretical Drift</span>
+                                </label>
+                            </div>
+                            <span class="text-slate-400 text-[11px]">Hover or tap on canvas to inspect paths</span>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Data Table: Simulation 1 Breakdown (Bawah Sekali) -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-3">
+                <div>
+                    <h3 class="text-base sm:text-lg font-bold text-[#0F172A]">Data Table: Simulation 1 Breakdown</h3>
+                    <p class="text-xs text-slate-500 mt-1 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>This table shows the exact step-by-step calculation for the first simulated path.</span>
+                    </p>
+                </div>
+
+                <div class="overflow-x-auto border border-slate-200 rounded-xl max-h-[380px] overflow-y-auto">
+                    <table class="w-full text-left text-xs font-mono">
+                        <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-200 sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold text-slate-600 bg-slate-50">WEEK</th>
+                                <th class="px-4 py-3 font-semibold text-slate-600 text-right bg-slate-50">STOCK PRICE AT START PERIOD</th>
+                                <th class="px-4 py-3 font-semibold text-slate-600 text-right bg-slate-50">RANDOM SAMPLE (E)</th>
+                                <th class="px-4 py-3 font-semibold text-slate-600 text-right bg-slate-50">CHANGE IN STOCK PRICE (ΔS)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sim1TableBody" class="divide-y divide-slate-100 bg-white">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- SECTION 3: WHAT IT'S USED FOR (LAYMAN TERMS)  -->
+        <!-- ============================================== -->
+        <section id="sectionApplications" class="hidden space-y-4 sm:space-y-6">
+            
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">💼</span>
+                    <h2 class="text-base sm:text-xl font-bold text-[#0F172A]">What Is This Used For?</h2>
+                </div>
+                <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Instead of guessing a single future, Monte Carlo simulates thousands of possibilities so decision makers can manage real-world risk.
+                </p>
+            </div>
+
+            <!-- 4 Layman Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-sky-50 text-[#0284C7] flex items-center justify-center text-sm font-bold">🏖️</div>
+                    <h3 class="text-sm font-bold text-[#0F172A]">Retirement Planning</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Checks if your pension savings will survive bad market years. If 95 out of 100 simulations keep you funded until age 95, your retirement plan is safe.
+                    </p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-sky-50 text-[#0284C7] flex items-center justify-center text-sm font-bold">🏦</div>
+                    <h3 class="text-sm font-bold text-[#0F172A]">Bank Stress Testing</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Regulators require banks to simulate severe market crashes to prove they hold enough backup cash reserves to prevent insolvency.
+                    </p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-sky-50 text-[#0284C7] flex items-center justify-center text-sm font-bold">📜</div>
+                    <h3 class="text-sm font-bold text-[#0F172A]">Stock Option Pricing</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Calculates fair prices for exotic contracts where payout depends on the highest or lowest price reached during the entire year.
+                    </p>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-sky-50 text-[#0284C7] flex items-center justify-center text-sm font-bold">🏭</div>
+                    <h3 class="text-sm font-bold text-[#0F172A]">Corporate Investments</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Companies model uncertain factory costs and fluctuating commodity prices before deciding whether to approve multi-million dollar projects.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="pt-1">
+                <button id="btnGotoSimFromApps" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer">
+                    Back to Interactive Simulator &rarr;
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Custom Toast Notification -->
+    <div id="toastBox" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#0F172A] text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-xl border border-slate-700 pointer-events-none opacity-0 transition-opacity duration-300 z-50">
+        Notification
+    </div>
+
+    <script>
+        // State Management
+        const state = {
+            S0: 100,
+            mu: 0.15,
+            sigma: 0.30,
+            dt: 0.019231,
+            steps: 52,
+            simulations: 10,
+            frequency: '52',
+            paths: [],
+            finalPrices: [],
+            activeTab: 'trajectories',
+            currentSection: 'welcome',
+        };
+
+        // Trajectory Palette directly matching the colorful screenshot
+        const PATH_COLORS = [
+            '#10B981', '#6366F1', '#EC4899', '#F59E0B', '#06B6D4',
+            '#84CC16', '#8B5CF6', '#F97316', '#0284C7', '#E11D48',
+            '#14B8A6', '#D946EF', '#EAB308', '#3B82F6', '#EF4444'
+        ];
+
+        // Cached DOM Elements
+        const dom = {
+            appContainer: document.getElementById('appContainer'),
+            sectionWelcome: document.getElementById('sectionWelcome'),
+            sectionFormula: document.getElementById('sectionFormula'),
+            sectionSimulation: document.getElementById('sectionSimulation'),
+            sectionApplications: document.getElementById('sectionApplications'),
+            navBtnWelcome: document.getElementById('navBtnWelcome'),
+            navBtnFormula: document.getElementById('navBtnFormula'),
+            navBtnSim: document.getElementById('navBtnSim'),
+            navBtnApplications: document.getElementById('navBtnApplications'),
+            navLogo: document.getElementById('navLogo'),
+            heroLaunchBtn: document.getElementById('heroLaunchBtn'),
+            cardNavFormula: document.getElementById('cardNavFormula'),
+            cardNavSim: document.getElementById('cardNavSim'),
+            cardNavApp: document.getElementById('cardNavApp'),
+            btnGotoSimFromFormula: document.getElementById('btnGotoSimFromFormula'),
+            btnGotoSimFromApps: document.getElementById('btnGotoSimFromApps'),
+            inputS0: document.getElementById('inputS0'),
+            inputMu: document.getElementById('inputMu'),
+            sliderMu: document.getElementById('sliderMu'),
+            muPctBadge: document.getElementById('muPctBadge'),
+            inputSigma: document.getElementById('inputSigma'),
+            sliderSigma: document.getElementById('sliderSigma'),
+            sigmaPctBadge: document.getElementById('sigmaPctBadge'),
+            selectFrequency: document.getElementById('selectFrequency'),
+            inputDt: document.getElementById('inputDt'),
+            dtAutoBadge: document.getElementById('dtAutoBadge'),
+            inputSteps: document.getElementById('inputSteps'),
+            inputSimulations: document.getElementById('inputSimulations'),
+            runSimulationBtn: document.getElementById('runSimulationBtn'),
+            resetDefaultsBtn: document.getElementById('resetDefaultsBtn'),
+            exportCsvBtn: document.getElementById('exportCsvBtn'),
+            statS0: document.getElementById('statS0'),
+            statMean: document.getElementById('statMean'),
+            statWinRate: document.getElementById('statWinRate'),
+            statTheoMean: document.getElementById('statTheoMean'),
+            badgePathsCount: document.getElementById('badgePathsCount'),
+            tabTrajectories: document.getElementById('tabTrajectories'),
+            tabHistogram: document.getElementById('tabHistogram'),
+            mcCanvas: document.getElementById('mcCanvas'),
+            chartWrapper: document.getElementById('chartWrapper'),
+            chartTooltip: document.getElementById('chartTooltip'),
+            chkShowMean: document.getElementById('chkShowMean'),
+            chkShowExpected: document.getElementById('chkShowExpected'),
+            btnDesktopView: document.getElementById('btnDesktopView'),
+            btnMobileView: document.getElementById('btnMobileView'),
+            toastBox: document.getElementById('toastBox'),
+        };
+
+        let hoveredStep = null;
+
+        function showToast(msg) {
+            dom.toastBox.textContent = msg;
+            dom.toastBox.style.opacity = '1';
+            setTimeout(() => {
+                dom.toastBox.style.opacity = '0';
+            }, 2000);
+        }
+
+        // Section Navigation
+        function switchSection(target) {
+            state.currentSection = target;
+            const sections = {
+                welcome: dom.sectionWelcome,
+                formula: dom.sectionFormula,
+                sim: dom.sectionSimulation,
+                apps: dom.sectionApplications
+            };
+            const navButtons = {
+                welcome: dom.navBtnWelcome,
+                formula: dom.navBtnFormula,
+                sim: dom.navBtnSim,
+                apps: dom.navBtnApplications
+            };
+
+            Object.keys(sections).forEach(key => {
+                if (key === target) {
+                    sections[key].classList.remove('hidden');
+                } else {
+                    sections[key].classList.add('hidden');
+                }
+            });
+
+            // Update nav tab active highlights
+            Object.keys(navButtons).forEach(key => {
+                if (key === target) {
+                    navButtons[key].className = 'nav-tab-btn px-2.5 py-1.5 rounded-lg bg-white text-[#0284C7] shadow-xs transition cursor-pointer font-bold';
+                } else {
+                    navButtons[key].className = 'nav-tab-btn px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-[#0F172A] transition cursor-pointer font-semibold';
+                }
+            });
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (target === 'sim') {
+                setTimeout(drawChart, 40);
+            }
+        }
+
+        // Standard Box-Muller Gaussian Random Variable generator: N(0, 1)
+        function randNormal() {
+            let u1 = 0, u2 = 0;
+            while (u1 === 0) u1 = Math.random();
+            while (u2 === 0) u2 = Math.random();
+            return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        }
+
+        // Core Simulation Engine
+        function runSimulation() {
+            state.S0 = parseFloat(dom.inputS0.value) || 100;
+            state.mu = parseFloat(dom.inputMu.value) || 0.15;
+            state.sigma = parseFloat(dom.inputSigma.value) || 0.30;
+            state.dt = parseFloat(dom.inputDt.value) || 0.019231;
+            state.steps = Math.max(2, parseInt(dom.inputSteps.value) || 52);
+            state.simulations = Math.max(1, parseInt(dom.inputSimulations.value) || 10);
+
+            state.paths = [];
+            state.finalPrices = [];
+            const sim1Breakdown = [];
+
+            const dtSqrt = Math.sqrt(state.dt);
+            const driftStep = state.mu * state.dt;
+
+            // Generate N trajectories
+            for (let sim = 0; sim < state.simulations; sim++) {
+                const path = [state.S0];
+                let currentPrice = state.S0;
+
+                for (let t = 0; t < state.steps; t++) {
+                    const epsilon = randNormal();
+                    // Formula: ΔS = St * (μΔt + σε√Δt)
+                    const deltaS = currentPrice * (driftStep + state.sigma * epsilon * dtSqrt);
+
+                    if (sim === 0) {
+                        sim1Breakdown.push({
+                            step: t,
+                            St: currentPrice,
+                            epsilon: epsilon,
+                            deltaS: deltaS
+                        });
+                    }
+
+                    currentPrice = Math.max(0.0001, currentPrice + deltaS);
+                    path.push(currentPrice);
+                }
+
+                state.paths.push(path);
+                state.finalPrices.push(currentPrice);
+            }
+
+            // Update stats cards placed ATAS graph
+            const sumFinal = state.finalPrices.reduce((a, b) => a + b, 0);
+            const meanFinal = sumFinal / state.simulations;
+            const wins = state.finalPrices.filter(p => p > state.S0).length;
+            const winRate = (wins / state.simulations) * 100;
+
+            const totalTime = state.steps * state.dt;
+            const theoMean = state.S0 * Math.exp(state.mu * totalTime);
+
+            dom.statS0.textContent = `$${state.S0.toFixed(2)}`;
+            dom.statMean.textContent = `$${meanFinal.toFixed(2)}`;
+            dom.statWinRate.textContent = `${winRate.toFixed(1)}%`;
+            dom.statTheoMean.textContent = `$${theoMean.toFixed(2)}`;
+
+            dom.badgePathsCount.textContent = `${state.simulations} Path${state.simulations > 1 ? 's' : ''} Generated`;
+
+            // Render Simulation 1 Breakdown Data Table
+            const tbody = document.getElementById('sim1TableBody');
+            if (tbody) {
+                let html = '';
+                sim1Breakdown.forEach(row => {
+                    const isPositive = row.deltaS >= 0;
+                    const deltaColor = isPositive ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold';
+                    const sign = isPositive ? '+' : '';
+                    html += `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="px-4 py-2.5 text-slate-800 font-semibold">${row.step}</td>
+                            <td class="px-4 py-2.5 text-slate-700 text-right font-mono">${row.St.toFixed(8)}</td>
+                            <td class="px-4 py-2.5 text-slate-700 text-right font-mono">${row.epsilon.toFixed(8)}</td>
+                            <td class="px-4 py-2.5 ${deltaColor} text-right font-mono">${sign}${row.deltaS.toFixed(8)}</td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            }
+
+            drawChart();
+        }
+
+        // Chart Drawing Routine
+        function drawChart() {
+            const canvas = dom.mcCanvas;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, rect.width, rect.height);
+
+            const isMobile = rect.width < 500;
+            const pad = {
+                top: 25,
+                right: isMobile ? 15 : 25,
+                bottom: isMobile ? 35 : 45,
+                left: isMobile ? 48 : 58
+            };
+            const w = rect.width - pad.left - pad.right;
+            const h = rect.height - pad.top - pad.bottom;
+
+            if (w <= 0 || h <= 0) return;
+
+            if (state.activeTab === 'histogram') {
+                drawHistogram(ctx, pad, w, h);
+                return;
+            }
+
+            // Find price range for scaling
+            let minP = Infinity;
+            let maxP = -Infinity;
+            for (const path of state.paths) {
+                for (const p of path) {
+                    if (p < minP) minP = p;
+                    if (p > maxP) maxP = p;
+                }
+            }
+
+            minP = Math.max(0, Math.floor(minP * 0.9));
+            maxP = Math.ceil(maxP * 1.1);
+            if (maxP === minP) maxP = minP + 10;
+
+            const getX = step => pad.left + (step / state.steps) * w;
+            const getY = price => pad.top + h - ((price - minP) / (maxP - minP)) * h;
+
+            // Horizontal Grid Lines & Labels
+            ctx.strokeStyle = '#E2E8F0';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+
+            const yTicks = 4;
+            ctx.fillStyle = '#64748B';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+
+            for (let i = 0; i <= yTicks; i++) {
+                const val = minP + (i / yTicks) * (maxP - minP);
+                const y = getY(val);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(pad.left + w, y);
+                ctx.stroke();
+                ctx.fillText(`$${Math.round(val)}`, pad.left - 6, y);
+            }
+
+            ctx.setLineDash([]);
+
+            // X-Axis Step Labels (Week / Period labels)
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const xTicksCount = isMobile ? 4 : 8;
+            for (let i = 0; i <= xTicksCount; i++) {
+                const step = Math.round((i / xTicksCount) * state.steps);
+                const x = getX(step);
+                const label = state.frequency === '52' ? `W${step}` : `t=${step}`;
+                ctx.fillText(label, x, pad.top + h + 8);
+            }
+
+            // Draw Paths
+            state.paths.forEach((path, idx) => {
+                ctx.strokeStyle = PATH_COLORS[idx % PATH_COLORS.length];
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                for (let step = 0; step <= state.steps; step++) {
+                    const x = getX(step);
+                    const y = getY(path[step]);
+                    if (step === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            });
+
+            // Simulated Mean Path (Optional)
+            if (dom.chkShowMean.checked) {
+                ctx.strokeStyle = '#0F172A';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                for (let step = 0; step <= state.steps; step++) {
+                    let sum = 0;
+                    for (let sim = 0; sim < state.paths.length; sim++) {
+                        sum += state.paths[sim][step];
+                    }
+                    const avg = sum / state.paths.length;
+                    const x = getX(step);
+                    const y = getY(avg);
+                    if (step === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            // Theoretical Drift Curve (Optional)
+            if (dom.chkShowExpected.checked) {
+                ctx.strokeStyle = '#0284C7';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                for (let step = 0; step <= state.steps; step++) {
+                    const t = step * state.dt;
+                    const expectedVal = state.S0 * Math.exp(state.mu * t);
+                    const x = getX(step);
+                    const y = getY(expectedVal);
+                    if (step === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Hover / Touch Crosshair Guide
+            if (hoveredStep !== null && hoveredStep >= 0 && hoveredStep <= state.steps) {
+                const x = getX(hoveredStep);
+                ctx.strokeStyle = '#0284C7';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([2, 2]);
+                ctx.beginPath();
+                ctx.moveTo(x, pad.top);
+                ctx.lineTo(x, pad.top + h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        // Terminal Price Histogram
+        function drawHistogram(ctx, pad, w, h) {
+            const prices = state.finalPrices;
+            if (prices.length === 0) return;
+
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const binsCount = Math.min(12, Math.max(5, Math.floor(Math.sqrt(prices.length))));
+            const binWidth = (max - min) / binsCount || 1;
+            const bins = new Array(binsCount).fill(0);
+
+            prices.forEach(p => {
+                let binIdx = Math.floor((p - min) / binWidth);
+                if (binIdx >= binsCount) binIdx = binsCount - 1;
+                bins[binIdx]++;
+            });
+
+            const maxBinFreq = Math.max(...bins, 1);
+            const barW = w / binsCount;
+
+            ctx.fillStyle = '#64748B';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+
+            bins.forEach((freq, i) => {
+                const barH = (freq / maxBinFreq) * (h - 20);
+                const x = pad.left + i * barW;
+                const y = pad.top + h - barH;
+
+                ctx.fillStyle = '#0284C7';
+                ctx.fillRect(x + 2, y, barW - 4, barH);
+
+                if (freq > 0) {
+                    ctx.fillStyle = '#0F172A';
+                    ctx.fillText(freq, x + barW / 2, y - 5);
+                }
+
+                const priceLabel = Math.round(min + i * binWidth);
+                ctx.fillStyle = '#64748B';
+                ctx.fillText(`$${priceLabel}`, x + barW / 2, pad.top + h + 10);
+            });
+        }
+
+        // Event Listeners & Interactions
+        function setupEventListeners() {
+            // Navigation Clicks
+            dom.navBtnWelcome.onclick = () => switchSection('welcome');
+            dom.navBtnFormula.onclick = () => switchSection('formula');
+            dom.navBtnSim.onclick = () => switchSection('sim');
+            dom.navBtnApplications.onclick = () => switchSection('apps');
+            dom.navLogo.onclick = () => switchSection('welcome');
+            dom.heroLaunchBtn.onclick = () => switchSection('sim');
+            dom.cardNavFormula.onclick = () => switchSection('formula');
+            dom.cardNavSim.onclick = () => switchSection('sim');
+            dom.cardNavApp.onclick = () => switchSection('apps');
+            dom.btnGotoSimFromFormula.onclick = () => switchSection('sim');
+            dom.btnGotoSimFromApps.onclick = () => switchSection('sim');
+
+            // Run Simulation
+            dom.runSimulationBtn.onclick = () => {
+                runSimulation();
+                showToast('Simulation generated!');
+            };
+
+            // Slider & Input Synchronizations
+            dom.inputMu.oninput = () => {
+                dom.sliderMu.value = dom.inputMu.value;
+                dom.muPctBadge.textContent = `${(parseFloat(dom.inputMu.value) * 100).toFixed(1)}% / yr`;
+            };
+            dom.sliderMu.oninput = () => {
+                dom.inputMu.value = dom.sliderMu.value;
+                dom.muPctBadge.textContent = `${(parseFloat(dom.sliderMu.value) * 100).toFixed(1)}% / yr`;
+            };
+
+            dom.inputSigma.oninput = () => {
+                dom.sliderSigma.value = dom.inputSigma.value;
+                dom.sigmaPctBadge.textContent = `${(parseFloat(dom.inputSigma.value) * 100).toFixed(1)}% / yr`;
+            };
+            dom.sliderSigma.oninput = () => {
+                dom.inputSigma.value = dom.sliderSigma.value;
+                dom.sigmaPctBadge.textContent = `${(parseFloat(dom.sliderSigma.value) * 100).toFixed(1)}% / yr`;
+            };
+
+            // Frequency Dropdown Auto-computation
+            dom.selectFrequency.onchange = () => {
+                const val = dom.selectFrequency.value;
+                state.frequency = val;
+                if (val !== 'custom') {
+                    const f = parseInt(val);
+                    const dt = (1 / f).toFixed(6);
+                    dom.inputDt.value = dt;
+                    dom.dtAutoBadge.textContent = `1/${f}`;
+                    dom.inputSteps.value = f;
+                }
+            };
+
+            // Reset Parameters
+            dom.resetDefaultsBtn.onclick = () => {
+                dom.inputS0.value = 100;
+                dom.inputMu.value = 0.15;
+                dom.sliderMu.value = 0.15;
+                dom.muPctBadge.textContent = '+15.0% / yr';
+                dom.inputSigma.value = 0.30;
+                dom.sliderSigma.value = 0.30;
+                dom.sigmaPctBadge.textContent = '30.0% / yr';
+                dom.selectFrequency.value = '52';
+                state.frequency = '52';
+                dom.inputDt.value = '0.019231';
+                dom.dtAutoBadge.textContent = '1/52';
+                dom.inputSteps.value = 52;
+                dom.inputSimulations.value = 10;
+                runSimulation();
+                showToast('Reset to defaults');
+            };
+
+            // Trajectory / Histogram Tab Toggle
+            dom.tabTrajectories.onclick = () => {
+                state.activeTab = 'trajectories';
+                dom.tabTrajectories.className = 'px-2.5 py-1 rounded-lg bg-white text-[#0284C7] font-semibold shadow-xs cursor-pointer';
+                dom.tabHistogram.className = 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer';
+                drawChart();
+            };
+
+            dom.tabHistogram.onclick = () => {
+                state.activeTab = 'histogram';
+                dom.tabHistogram.className = 'px-2.5 py-1 rounded-lg bg-white text-[#0284C7] font-semibold shadow-xs cursor-pointer';
+                dom.tabTrajectories.className = 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer';
+                drawChart();
+            };
+
+            dom.chkShowMean.onchange = drawChart;
+            dom.chkShowExpected.onchange = drawChart;
+
+            // Hover and Touch Inspection
+            function handleHover(clientX) {
+                if (state.activeTab === 'histogram') return;
+                const rect = dom.mcCanvas.getBoundingClientRect();
+                const mouseX = clientX - rect.left;
+                const isMobile = rect.width < 500;
+                const padLeft = isMobile ? 48 : 58;
+                const padRight = isMobile ? 15 : 25;
+                const chartW = rect.width - padLeft - padRight;
+
+                if (mouseX >= padLeft && mouseX <= rect.width - padRight) {
+                    const step = Math.round(((mouseX - padLeft) / chartW) * state.steps);
+                    hoveredStep = Math.max(0, Math.min(state.steps, step));
+
+                    let content = `<div class="font-bold text-slate-200 border-b border-slate-700 pb-1 mb-1">Step ${hoveredStep}</div>`;
+                    const maxShow = Math.min(3, state.paths.length);
+                    for (let i = 0; i < maxShow; i++) {
+                        const color = PATH_COLORS[i % PATH_COLORS.length];
+                        content += `<div class="flex justify-between gap-2 text-[10px]"><span style="color:${color}">Path ${i+1}:</span> <b>$${state.paths[i][hoveredStep].toFixed(2)}</b></div>`;
+                    }
+
+                    dom.chartTooltip.innerHTML = content;
+                    dom.chartTooltip.classList.remove('hidden');
+
+                    let ttX = mouseX + 12;
+                    if (ttX + 130 > rect.width) ttX = mouseX - 140;
+                    dom.chartTooltip.style.left = `${Math.max(5, ttX)}px`;
+                    dom.chartTooltip.style.top = `25px`;
+
+                    drawChart();
+                }
+            }
+
+            dom.mcCanvas.onmousemove = e => handleHover(e.clientX);
+            dom.mcCanvas.onmouseleave = () => {
+                hoveredStep = null;
+                dom.chartTooltip.classList.add('hidden');
+                drawChart();
+            };
+
+            dom.mcCanvas.addEventListener('touchmove', e => {
+                if (e.touches && e.touches.length > 0) {
+                    handleHover(e.touches[0].clientX);
+                }
+            }, { passive: true });
+
+            dom.mcCanvas.addEventListener('touchend', () => {
+                setTimeout(() => {
+                    hoveredStep = null;
+                    dom.chartTooltip.classList.add('hidden');
+                    drawChart();
+                }, 1200);
+            });
+
+            // Desktop Device Preview Toggle
+            if (dom.btnMobileView && dom.btnDesktopView) {
+                dom.btnMobileView.onclick = () => {
+                    dom.appContainer.classList.add('phone-frame-mode');
+                    dom.btnMobileView.className = 'px-2 py-1 rounded-lg bg-white text-[#0F172A] shadow-xs font-semibold cursor-pointer';
+                    dom.btnDesktopView.className = 'px-2 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer';
+                    setTimeout(drawChart, 60);
+                };
+                dom.btnDesktopView.onclick = () => {
+                    dom.appContainer.classList.remove('phone-frame-mode');
+                    dom.btnDesktopView.className = 'px-2 py-1 rounded-lg bg-white text-[#0F172A] shadow-xs font-semibold cursor-pointer';
+                    dom.btnMobileView.className = 'px-2 py-1 rounded-lg text-slate-600 hover:text-[#0F172A] cursor-pointer';
+                    setTimeout(drawChart, 60);
+                };
+            }
+
+            // Export CSV
+            dom.exportCsvBtn.onclick = () => {
+                let csv = 'Step,Time';
+                for (let i = 1; i <= state.simulations; i++) csv += `,Path_${i}`;
+                csv += '\n';
+
+                for (let step = 0; step <= state.steps; step++) {
+                    const t = (step * state.dt).toFixed(4);
+                    let row = `${step},${t}`;
+                    for (let sim = 0; sim < state.simulations; sim++) {
+                        row += `,${state.paths[sim][step].toFixed(2)}`;
+                    }
+                    csv += row + '\n';
+                }
+
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `monte_carlo_gbm_${state.simulations}paths.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('CSV downloaded!');
+            };
+        }
+
+        window.addEventListener('resize', () => {
+            drawChart();
+        });
+
+        window.onload = function() {
+            setupEventListeners();
+            runSimulation();
+            switchSection('welcome');
+        };
+    </script>
+</body>
+</html>
